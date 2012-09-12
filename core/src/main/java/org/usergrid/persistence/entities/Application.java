@@ -118,6 +118,10 @@ public class Application extends TypedEntity {
 
 	@EntityCollection(type = "device", propertiesIndexed = {}, indexingDynamicProperties = false)
 	protected List<UUID> devices;
+	
+	@EntityCollection(type = "file", propertiesIndexed = {
+			"created", "modified", "path", "dir", "size" }, indexingDynamicProperties = false)
+	protected List<UUID> files;
 
 
 	public Application() {
@@ -352,6 +356,15 @@ public class Application extends TypedEntity {
 
 	public void setOauthproviders(Map<String, OAuthProvider> oauthproviders) {
 		this.oauthproviders = oauthproviders;
+	}
+
+	@JsonSerialize(include = Inclusion.NON_NULL)
+	public List<UUID> getFiles() {
+		return files;
+	}
+
+	public void setFiles(List<UUID> files) {
+		this.files = files;
 	}
 	
 	/**
