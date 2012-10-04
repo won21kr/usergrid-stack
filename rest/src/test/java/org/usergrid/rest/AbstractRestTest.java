@@ -17,13 +17,16 @@ package org.usergrid.rest;
 
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.usergrid.management.AccountCreationProps.PROPERTIES_TEST_ACCOUNT_ADMIN_USER_USERNAME;
 import static org.usergrid.utils.JsonUtils.mapToFormattedJsonString;
 import static org.usergrid.utils.MapUtils.hashMap;
 
 import java.net.URLClassLoader;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 
 import javax.ws.rs.core.MediaType;
 
@@ -42,8 +45,12 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.request.RequestContextListener;
 import org.springframework.web.filter.DelegatingFilterProxy;
 import org.usergrid.java.client.Client;
+import org.usergrid.management.AccountCreationProps;
 import org.usergrid.management.ApplicationInfo;
 import org.usergrid.management.ManagementService;
+import org.usergrid.management.UserInfo;
+import org.usergrid.management.cassandra.AccountCreationPropsImpl;
+import org.usergrid.management.cassandra.ManagementServiceImpl;
 import org.usergrid.persistence.Identifier;
 import org.usergrid.persistence.entities.User;
 import org.usergrid.rest.filters.ContentTypeFilter;
@@ -77,6 +84,8 @@ public abstract class AbstractRestTest extends JerseyTest {
     protected static Properties properties;
 
     protected static String access_token;
+    
+    protected static String adminAccessToken;
 
     protected ManagementService managementService;
 
@@ -156,26 +165,8 @@ public abstract class AbstractRestTest extends JerseyTest {
             return;
         }
 
-        JsonNode node = resource().path("/management/token")
-                .queryParam("grant_type", "password")
-                .queryParam("username", "test@usergrid.com")
-                .queryParam("password", "test")
-                .accept(MediaType.APPLICATION_JSON).get(JsonNode.class);
-
-        String mgmToken = node.get("access_token").getTextValue();
         //
-
-        Map<String, String> payload = hashMap("email", "ed@anuff.com")
-                .map("username", "edanuff").map("name", "Ed Anuff")
-                .map("password", "sesame").map("pin", "1234");
-
-        node = resource().path("/test-organization/test-app/users")
-                .queryParam("access_token", mgmToken)
-                .accept(MediaType.APPLICATION_JSON)
-                .type(MediaType.APPLICATION_JSON_TYPE)
-                .post(JsonNode.class, payload);
-
-        // client.setApiUrl(apiUrl);
+        createUser("edanuff", "ed@anuff.com", "sesame", "Ed Anuff");        // client.setApiUrl(apiUrl);
 
         usersSetup = true;
 
@@ -191,8 +182,10 @@ public abstract class AbstractRestTest extends JerseyTest {
         for (int i = 0; i < 10; i++) {
 
             try {
-                client = new Client("test-organization", "test-app")
-                        .withApiUrl(getBaseURI().toString());
+               
+                setUserPassword("ed@anuff.com", "sesame");
+                
+                client = new Client("test-organization", "test-app").withApiUrl(getBaseURI().toString());
 
                 org.usergrid.java.client.response.ApiResponse response = client
                         .authorizeAppUser("ed@anuff.com", "sesame");
@@ -210,6 +203,7 @@ public abstract class AbstractRestTest extends JerseyTest {
         }
 
     }
+  
 
     @Override
     protected TestContainerFactory getTestContainerFactory() {
@@ -248,34 +242,101 @@ public abstract class AbstractRestTest extends JerseyTest {
 
         properties = (Properties) context.getBean("properties");
 
-        managementService = (ManagementService) context
-                .getBean("managementService");
-
-        ApplicationInfo appInfo = managementService
-                .getApplicationInfo("test-organization/test-app");
-
-        User user = managementService.getAppUserByIdentifier(appInfo.getId(),
-                Identifier.from("ed@anuff.com"));
-
-        access_token = managementService.getAccessTokenForAppUser(
-                appInfo.getId(), user.getUuid());
+        managementService = (ManagementService) context.getBean("managementService");
+        
+     
+        access_token = userToken("ed@anuff.com", "sesame");
 
         loginClient();
 
     }
+    
+    protected String userToken(String name, String password) throws Exception{
+       
+        setUserPassword("ed@anuff.com", "sesame");
+        
+        JsonNode node = resource().path("/test-organization/test-app/token")
+                .queryParam("grant_type", "password")
+                .queryParam("username", name)
+                .queryParam("password", password)
+                .accept(MediaType.APPLICATION_JSON).get(JsonNode.class);
+        
+        String userToken = node.get("access_token").getTextValue();
+         
+        return userToken;
+
+    }
+    
+    public void createUser(String username, String email, String password, String name){
+
+        if(adminAccessToken == null){
+            adminToken();
+        }
+        
+        Map<String, String> payload = hashMap("email", email)
+                .map("username", username).map("name", name)
+                .map("password", password).map("pin", "1234");
+
+        resource().path("/test-organization/test-app/users")
+                .queryParam("access_token", adminAccessToken)
+                .accept(MediaType.APPLICATION_JSON)
+                .type(MediaType.APPLICATION_JSON_TYPE)
+                .post(JsonNode.class, payload);
+
+    }
+    
+    public void setUserPassword(String username, String password){
+        Map<String, String> data = new HashMap<String, String>();
+        data.put("newpassword", password);
+        
+        if(adminAccessToken == null){
+            adminToken();
+        }
+        
+        //change the password as admin.  The old password isn't required
+        JsonNode node = resource().path(String.format("/test-organization/test-app/users/%s/password", username))
+                .queryParam("access_token", adminAccessToken)
+                .accept(MediaType.APPLICATION_JSON)
+                .type(MediaType.APPLICATION_JSON_TYPE).post(JsonNode.class, data);
+        
+        assertNull(getError(node));
+        
+    }
+    
+    
 
     /**
-     * Acquire the management token for the test@usergrid.com user
+     * Acquire the management token for the test@usergrid.com user with the default password
      * 
      * @return
      */
-    protected String mgmtToken() {
+    protected String adminToken() {
+        adminAccessToken =  mgmtToken("test@usergrid.com", "test");
+        return adminAccessToken;
+    }
+    
+    /**
+     * Get the super user's access token
+     * @return
+     */
+    protected String superAdminToken(){
+        return mgmtToken("superuser", "superpassword");
+    }
+    
+    /**
+     * Acquire the management token for the test@usergrid.com user with the given password
+     * 
+     * @return
+     */
+    protected String mgmtToken(String user, String password) {
         JsonNode node = resource().path("/management/token")
                 .queryParam("grant_type", "password")
-                .queryParam("username", "test@usergrid.com")
-                .queryParam("password", "test")
+                .queryParam("username", user)
+                .queryParam("password", password)
                 .accept(MediaType.APPLICATION_JSON).get(JsonNode.class);
+        
         String mgmToken = node.get("access_token").getTextValue();
+         
         return mgmToken;
 
     }
@@ -300,6 +361,25 @@ public abstract class AbstractRestTest extends JerseyTest {
      */
     protected JsonNode getEntity(JsonNode response, String name) {
         return response.get("entities").get(name);
+    }
+    
+    /**
+     * Get the uuid from the entity at the specified index
+     * @param response
+     * @param index
+     * @return
+     */
+    protected UUID getEntityId(JsonNode response, int index){
+        return UUID.fromString(getEntity(response, index).get("uuid").asText());
+    }
+    
+    /**
+     * Get the error response
+     * @param response
+     * @return
+     */
+    protected JsonNode getError(JsonNode response){
+        return response.get("error");
     }
 }
 

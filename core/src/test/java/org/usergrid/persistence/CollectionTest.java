@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 import static org.usergrid.utils.MapUtils.hashMap;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -750,7 +751,7 @@ public class CollectionTest extends AbstractPersistenceTest {
 
     for (int i = 0; i < size; i++) {
       Map<String, Object> properties = new LinkedHashMap<String, Object>();
-      properties.put("name", "object" + 1);
+      properties.put("name", "object" + i);
       Entity created = em.create("objects", properties);
 
       entityIds.add(created.getUuid());
@@ -954,6 +955,156 @@ public class CollectionTest extends AbstractPersistenceTest {
     assertNull(r.getCursor());
 
 
+  }
+  
+
+    @Test
+    public void subpropertyQuerying() throws Exception {
+        Map<String, Object> root = new HashMap<String, Object>();
+
+        Map<String, Object> subEntity = new HashMap<String, Object>();
+
+        root.put("rootprop1", "simpleprop");
+
+        subEntity.put("intprop", 10);
+        subEntity.put("substring","I'm a tokenized string that should be indexed");
+
+        root.put("subentity", subEntity);
+
+        UUID applicationId = createApplication("testOrganization",
+                "subpropertyQuerying");
+        assertNotNull(applicationId);
+
+       
+        EntityManager em = emf.getEntityManager(applicationId);
+        assertNotNull(em);
+
+        Entity saved = em.create("test", root);
+
+        
+        
+        Query query = new Query();
+        query.addEqualityFilter("rootprop1","simpleprop");
+
+        Results results = em.searchCollection(em.getApplicationRef(), "tests",
+                query);
+        
+        
+        Entity entity = results.getEntitiesMap().get(saved.getUuid());
+
+        assertNotNull(entity);
+        
+        
+        //query on the nested int value
+        query = new Query();
+        query.addEqualityFilter("subentity.intprop", 10);
+
+         results = em.searchCollection(em.getApplicationRef(), "tests",
+                query);
+
+        entity = results.getEntitiesMap().get(saved.getUuid());
+
+        assertNotNull(entity);
+
+        //query on the nexted tokenized value
+        query = new Query();
+        query.addContainsFilter("subentity.substring", "tokenized");
+        query.addContainsFilter("subentity.substring", "indexed");
+
+        results = em.searchCollection(em.getApplicationRef(), "tests", query);
+
+        entity = results.getEntitiesMap().get(saved.getUuid());
+
+        assertNotNull(entity);
+    }
+
+
+    @Test
+    public void stringWithSpaces() throws Exception {
+        Map<String, Object> props = new HashMap<String, Object>();
+
+        props.put("myString", "My simple string");
+        
+        UUID applicationId = createApplication("testOrganization",
+                "stringWithSpaces");
+        assertNotNull(applicationId);
+
+       
+        EntityManager em = emf.getEntityManager(applicationId);
+        assertNotNull(em);
+
+        Entity saved = em.create("test", props);
+
+        
+        
+        Query query = new Query();
+        query.addEqualityFilter("myString","My simple string");
+
+        Results results = em.searchCollection(em.getApplicationRef(), "tests",
+                query);
+        
+        
+        Entity entity = results.getEntitiesMap().get(saved.getUuid());
+
+        assertNotNull(entity);
+        
+    }
+
+  @Test
+  public void testSelectTerms() throws Exception {
+
+    UUID applicationId = createApplication("testOrganization", "testSelectTerms");
+
+    EntityManager em = emf.getEntityManager(applicationId);
+
+    Map<String, Object> properties = new LinkedHashMap<String, Object>();
+    properties.put("username", "edanuff");
+    properties.put("email", "ed@anuff.com");
+
+    em.create("user", properties);
+
+    String s = "select username, email where username = 'edanuff'";
+    Query query = Query.fromQL(s);
+
+    Results r = em.searchCollection(em.getApplicationRef(), "users", query);
+    assertTrue(r.size() == 1);
+
+    // selection results should be a list of lists
+    List<Object> sr = query.getSelectionResults(r);
+    assertTrue(sr.size() == 1);
+
+    List firstResult = (List)sr.get(0);
+    assertTrue("edanuff".equals(firstResult.get(0)));
+    assertTrue("ed@anuff.com".equals(firstResult.get(1)));
+
+  }
+
+  @Test
+  public void testRedefineTerms() throws Exception {
+
+    UUID applicationId = createApplication("testOrganization", "testRedefineTerms");
+
+    EntityManager em = emf.getEntityManager(applicationId);
+
+    Map<String, Object> properties = new LinkedHashMap<String, Object>();
+    properties.put("username", "edanuff");
+    properties.put("email", "ed@anuff.com");
+
+    em.create("user", properties);
+
+    String s = "select {name: username, email: email} where username = 'edanuff'";
+    Query query = Query.fromQL(s);
+
+    Results r = em.searchCollection(em.getApplicationRef(), "users", query);
+    assertTrue(r.size() == 1);
+
+    // selection results should be a list of lists
+    List<Object> sr = query.getSelectionResults(r);
+    assertTrue(sr.size() == 1);
+
+    Map firstResult = (Map)sr.get(0);
+    assertTrue("edanuff".equals(firstResult.get("name")));
+    assertTrue("ed@anuff.com".equals(firstResult.get("email")));
   }
 
 }

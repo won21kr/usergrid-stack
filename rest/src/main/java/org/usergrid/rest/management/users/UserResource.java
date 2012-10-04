@@ -15,9 +15,11 @@
  ******************************************************************************/
 package org.usergrid.rest.management.users;
 
+import static org.usergrid.security.shiro.utils.SubjectUtils.*;
 import static org.usergrid.utils.ConversionUtils.string;
 
 import java.util.Map;
+import java.util.UUID;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
@@ -35,8 +37,10 @@ import javax.ws.rs.core.UriInfo;
 import net.tanesha.recaptcha.ReCaptchaImpl;
 import net.tanesha.recaptcha.ReCaptchaResponse;
 
+import org.apache.shiro.authz.AuthorizationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Required;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 import org.usergrid.management.ActivationState;
@@ -101,12 +105,7 @@ public class UserResource extends AbstractContextResource {
 			return null;
 		}
 
-		String oldPassword = string(json.get("oldpassword"));
-		String newPassword = string(json.get("newpassword"));
-		if ((oldPassword != null) && (newPassword != null)) {
-			management.setAdminUserPassword(user.getUuid(), oldPassword,
-					newPassword);
-		}
+		setUserPasswordPut(ui, json, callback);
 
 		String email = string(json.get("email"));
 		String username = string(json.get("username"));
@@ -122,26 +121,40 @@ public class UserResource extends AbstractContextResource {
 
 	@PUT
 	@Path("password")
-	public JSONWithPadding setUserPassword(@Context UriInfo ui,
+	public JSONWithPadding setUserPasswordPut(@Context UriInfo ui,
 			Map<String, Object> json,
 			@QueryParam("callback") @DefaultValue("callback") String callback)
 			throws Exception {
 
-		if (json == null) {
-			return null;
-		}
+        if (json == null) {
+            return null;
+        }
 
-		String oldPassword = string(json.get("oldpassword"));
-		String newPassword = string(json.get("newpassword"));
-		management.setAdminUserPassword(user.getUuid(), oldPassword,
-				newPassword);
+        String oldPassword = string(json.get("oldpassword"));
+        String newPassword = string(json.get("newpassword"));
 
-		ApiResponse response = new ApiResponse(ui);
-		response.setAction("set user password");
+        if (isServiceAdmin()) {
+            management.setAdminUserPassword(user.getUuid(), newPassword);
+        } else {
+            management.setAdminUserPassword(user.getUuid(), oldPassword,
+                    newPassword);
+        }
 
-		return new JSONWithPadding(response, callback);
+        ApiResponse response = new ApiResponse(ui);
+        response.setAction("set user password");
+
+        return new JSONWithPadding(response, callback);
 	}
 
+	@POST
+	@Path("password")
+	public JSONWithPadding setUserPasswordPost(@Context UriInfo ui,
+            Map<String, Object> json,
+            @QueryParam("callback") @DefaultValue("callback") String callback)
+            throws Exception {
+	    return setUserPasswordPut(ui, json, callback);
+	}
+	
 	@RequireAdminUserAccess
 	@GET
 	@Path("feed")
@@ -162,6 +175,7 @@ public class UserResource extends AbstractContextResource {
 	@RequireAdminUserAccess
 	@GET
 	public JSONWithPadding getUserData(@Context UriInfo ui,
+	        @QueryParam("ttl") long ttl,
 			@QueryParam("callback") @DefaultValue("callback") String callback)
 			throws Exception {
 
@@ -169,7 +183,7 @@ public class UserResource extends AbstractContextResource {
 		response.setAction("get admin user");
 
 		String token = management.getAccessTokenForAdminUser(SubjectUtils
-				.getUser().getUuid());
+				.getUser().getUuid(), ttl);
 		Map<String, Object> userOrganizationData = management
 				.getAdminUserOrganizationData(user.getUuid());
 		userOrganizationData.put("token", token);
@@ -324,5 +338,31 @@ public class UserResource extends AbstractContextResource {
 		response.setAction("reactivate user");
 		return new JSONWithPadding(response, callback);
 	}
+	
+    @POST
+    @Path("revoketokens")
+    public JSONWithPadding revokeTokensPost(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback) throws Exception {
+
+        UUID adminId = user.getUuid();
+        
+        logger.info("Revoking user tokens for {}", adminId);
+
+        ApiResponse response = new ApiResponse(ui);
+
+        management.revokeAccessTokensForAdminUser(adminId);
+
+        response.setAction("revoked user tokens");
+        return new JSONWithPadding(response, callback);
+
+    }
+
+    @PUT
+    @Path("revoketokens")
+    public JSONWithPadding revokeTokensPut(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback) throws Exception {
+        return revokeTokensPost(ui, callback);
+
+    }
 
 }

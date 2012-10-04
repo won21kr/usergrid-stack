@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
 import javax.ws.rs.DefaultValue;
 import javax.ws.rs.FormParam;
 import javax.ws.rs.GET;
@@ -50,6 +51,7 @@ import org.apache.amber.oauth2.common.error.OAuthError;
 import org.apache.amber.oauth2.common.exception.OAuthProblemException;
 import org.apache.amber.oauth2.common.message.OAuthResponse;
 import org.apache.amber.oauth2.common.message.types.GrantType;
+import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.shiro.authz.UnauthorizedException;
 import org.apache.shiro.codec.Base64;
@@ -62,13 +64,16 @@ import org.usergrid.mq.QueueManager;
 import org.usergrid.persistence.Identifier;
 import org.usergrid.persistence.entities.User;
 import org.usergrid.rest.ApiResponse;
+import org.usergrid.rest.applications.assets.AssetsResource;
 import org.usergrid.rest.applications.events.EventsResource;
 import org.usergrid.rest.applications.queues.QueueResource;
 import org.usergrid.rest.applications.users.UsersResource;
+import org.usergrid.rest.exceptions.NoOpException;
 import org.usergrid.rest.exceptions.RedirectionException;
 import org.usergrid.rest.security.annotations.RequireApplicationAccess;
 import org.usergrid.security.oauth.AccessInfo;
 import org.usergrid.security.oauth.ClientCredentialsInfo;
+import org.usergrid.services.ServiceAction;
 
 import com.sun.jersey.api.json.JSONWithPadding;
 import com.sun.jersey.api.view.Viewable;
@@ -81,7 +86,7 @@ import com.sun.jersey.api.view.Viewable;
 public class ApplicationResource extends ServiceResource {
 
     public static final Logger logger = LoggerFactory
-            .getLogger(ServiceResource.class);
+            .getLogger(ApplicationResource.class);
 
     UUID applicationId;
     QueueManager queues;
@@ -137,11 +142,34 @@ public class ApplicationResource extends ServiceResource {
         return getEventsResource(ui);
     }
 
+  @RequireApplicationAccess
+  @Path("assets")
+  public AssetsResource getAssetsResource(@Context UriInfo ui)
+          throws Exception {
+    logger.info("in assets n applicationResource");
+    addParameter(getServiceParameters(), "assets");
+
+    PathSegment ps = getFirstPathSegment("assets");
+    if (ps != null) {
+      addMatrixParams(getServiceParameters(), ui, ps);
+    }
+
+    return getSubResource(AssetsResource.class);
+  }
+
+
+  @RequireApplicationAccess
+  @Path("asset")
+  public AssetsResource getAssetResource(@Context UriInfo ui)
+          throws Exception {
+    // TODO change to singular
+    logger.info("in asset in applicationResource");
+    return getAssetsResource(ui);
+  }
+
     @Path("users")
     public UsersResource getUsers(@Context UriInfo ui) throws Exception {
-
-        logger.info("ServiceResource.addNameParameter");
-
+        logger.info("ApplicationResource.getUsers");
         addParameter(getServiceParameters(), "users");
 
         PathSegment ps = getFirstPathSegment("users");
@@ -185,6 +213,7 @@ public class ApplicationResource extends ServiceResource {
             @QueryParam("client_id") String client_id,
             @QueryParam("client_secret") String client_secret,
             @QueryParam("code") String code,
+            @QueryParam("ttl") long ttl,
             @QueryParam("redirect_uri") String redirect_uri,
             @QueryParam("callback") @DefaultValue("") String callback)
             throws Exception {
@@ -225,7 +254,7 @@ public class ApplicationResource extends ServiceResource {
             } else if ("client_credentials".equals(grant_type)) {
                 try {
                     AccessInfo access_info = management.authorizeClient(
-                            client_id, client_secret);
+                            client_id, client_secret, ttl);
                     if (access_info != null) {
                         return Response
                                 .status(SC_OK)
@@ -256,7 +285,7 @@ public class ApplicationResource extends ServiceResource {
             }
 
             String token = management.getAccessTokenForAppUser(
-                    services.getApplicationId(), user.getUuid());
+                    services.getApplicationId(), user.getUuid(), ttl);
 
             AccessInfo access_info = new AccessInfo()
                     .withExpiresIn(tokens.getMaxTokenAge(token) / 1000)
@@ -286,6 +315,7 @@ public class ApplicationResource extends ServiceResource {
             @FormParam("client_id") String client_id,
             @FormParam("client_secret") String client_secret,
             @FormParam("code") String code,
+            @FormParam("ttl") long ttl,
             @FormParam("redirect_uri") String redirect_uri,
             @QueryParam("callback") @DefaultValue("") String callback)
             throws Exception {
@@ -293,7 +323,7 @@ public class ApplicationResource extends ServiceResource {
         logger.info("ApplicationResource.getAccessTokenPost");
 
         return getAccessToken(ui, null, grant_type, username, password, pin,
-                client_id, client_secret, code, redirect_uri, callback);
+                client_id, client_secret, code, ttl, redirect_uri, callback);
     }
 
     @POST
@@ -312,9 +342,18 @@ public class ApplicationResource extends ServiceResource {
         String pin = (String) json.get("pin");
         String code = (String) json.get("code");
         String redirect_uri = (String) json.get("redirect_uri");
+        long ttl = 0;
 
+        if (json.get("ttl") != null) {
+            try {
+                ttl = Long.parseLong(json.get("ttl").toString());
+            } catch (NumberFormatException nfe) {
+                throw new IllegalArgumentException("ttl must be a number >= 0");
+            }
+        }
+        
         return getAccessToken(ui, null, grant_type, username, password, pin,
-                client_id, client_secret, code, redirect_uri, callback);
+                client_id, client_secret, code, ttl, redirect_uri, callback);
     }
 
     @GET
@@ -421,7 +460,7 @@ public class ApplicationResource extends ServiceResource {
                 }
                 redirect_uri += "code="
                         + management.getAccessTokenForAppUser(
-                                services.getApplicationId(), user.getUuid());
+                                services.getApplicationId(), user.getUuid(), 0);
                 if (isNotBlank(state)) {
                     redirect_uri += "&state="
                             + URLEncoder.encode(state, "UTF-8");
@@ -442,6 +481,18 @@ public class ApplicationResource extends ServiceResource {
         }
     }
 
+    @DELETE
+    @RequireApplicationAccess
+    @Override
+    public JSONWithPadding executeDelete(@Context UriInfo ui,
+            @QueryParam("callback") @DefaultValue("callback") String callback)
+            throws Exception {
+
+        logger.info("ApplicationResource.executeDelete");
+        
+        throw new NotImplementedException("Application delete is not allowed yet");
+    }
+    
     String errorMsg = "";
     String applicationName;
     String responseType;

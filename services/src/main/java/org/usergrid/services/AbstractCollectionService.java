@@ -25,12 +25,9 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.usergrid.persistence.Entity;
-import org.usergrid.persistence.EntityRef;
-import org.usergrid.persistence.Query;
-import org.usergrid.persistence.Results;
+import org.usergrid.persistence.*;
 import org.usergrid.persistence.Results.Level;
-import org.usergrid.persistence.Schema;
+import org.usergrid.persistence.entities.User;
 import org.usergrid.services.ServiceResults.Type;
 import org.usergrid.services.exceptions.ServiceResourceNotFoundException;
 
@@ -119,9 +116,10 @@ public class AbstractCollectionService extends AbstractService {
 		if (nameProperty == null) {
 			nameProperty = "name";
 		}
+    EntityRef entity = em.getAlias(getEntityType(), name);
 
-		EntityRef entity = em.getAlias(getEntityType(), name);
 		if (entity == null) {
+      logger.info("miss on entityType: {} with name: {}", getEntityType(), name);
 			throw new ServiceResourceNotFoundException(context);
 		}
 
@@ -351,7 +349,12 @@ public class AbstractCollectionService extends AbstractService {
 
 	}
 
-	@Override
+  @Override
+  public ServiceResults putCollection(ServiceContext context) throws Exception {
+    return postCollection(context);
+  }
+
+    @Override
 	public ServiceResults postItemsByQuery(ServiceContext context, Query query)
 			throws Exception {
 		if (context.moreParameters()) {
