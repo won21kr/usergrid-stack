@@ -101,7 +101,7 @@
     	<constructor-arg value="${usergrid.index.defaultbucketsize}"/>
     </bean>
     
-    <bean id="mailUtils" class="org.usergrid.utils.MailUtils" />
+    <!--<bean id="mailUtils" class="org.usergrid.utils.MailUtils" />-->
 
     <bean id="entityManager" class="org.usergrid.persistence.cassandra.EntityManagerImpl" scope="prototype"/>
 
