@@ -2704,6 +2704,22 @@ public class RelationManagerImpl implements RelationManager,
                         ref(id)).getUuid());
             }
         }
+        
+        /*
+         *  2012-10-10 judeKim
+         *  add set Refs.UUIDs to results.ids
+         *  not stable code.
+         */
+        if ( results.getLevel() == Results.Level.REFS ) {
+        	if ( results.getRefs() != null ) {
+            	List<UUID>newIds = new ArrayList<UUID>();
+                List<EntityRef> refs = results.getRefs();
+                for (EntityRef ref : refs) {
+                	newIds.add(ref.getUuid());
+                }
+                results.setIds( newIds );
+            }       
+        }
 
         results = em.loadEntities(results, query.getResultsLevel(), ids,
                 query.getLimit());
