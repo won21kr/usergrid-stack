@@ -1924,7 +1924,7 @@ public class ManagementServiceImpl implements ManagementService {
         String reset_url = String.format(properties
                 .getProperty(PROPERTIES_ADMIN_RESETPW_URL), user.getUuid()
                 .toString())
-                + "?token=" + token;
+                + token;
 
         sendHtmlMail(
                 properties,
