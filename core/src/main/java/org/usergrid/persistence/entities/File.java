@@ -1,14 +1,12 @@
 package org.usergrid.persistence.entities;
 
 
-import java.util.List;
-import java.util.Map;
+
 import java.util.Set;
 import java.util.UUID;
 import org.codehaus.jackson.map.annotate.JsonSerialize;
 import org.codehaus.jackson.map.annotate.JsonSerialize.Inclusion;
 import org.usergrid.persistence.TypedEntity;
-import org.usergrid.persistence.annotations.EntityCollection;
 import org.usergrid.persistence.annotations.EntityDictionary;
 import org.usergrid.persistence.annotations.EntityProperty;
 
@@ -31,22 +29,14 @@ public class File extends TypedEntity{
 	@EntityProperty(indexed = true, fulltextIndexed = false, required = true, basic = true)
 	protected String dir;
 
-	@EntityProperty(indexed = true, fulltextIndexed = false, required = true, basic = true)
-	protected String size;
+	@EntityProperty(indexed = true, required = true, basic = true)
+	protected Long size;
 
 
 	@EntityDictionary(keyType = java.lang.String.class)
 	protected Set<String> connections;
 	
-	@EntityDictionary(keyType = java.lang.String.class, valueType = java.lang.String.class)
-	protected Map<String, String> rolenames;
 
-	@EntityDictionary(keyType = java.lang.String.class)
-	protected Set<String> permissions;
-
-
-	@EntityCollection(type = "role", linkedCollection = "files")
-	protected List<UUID> roles;
 
 	public File() {
 		// id = UUIDUtils.newTimeUUID();
@@ -65,32 +55,6 @@ public class File extends TypedEntity{
 		this.connections = connections;
 	}
 
-	@JsonSerialize(include = Inclusion.NON_NULL)
-	public Map<String, String> getRolenames() {
-		return rolenames;
-	}
-
-	public void setRolenames(Map<String, String> rolenames) {
-		this.rolenames = rolenames;
-	}
-
-	@JsonSerialize(include = Inclusion.NON_NULL)
-	public Set<String> getPermissions() {
-		return permissions;
-	}
-
-	public void setPermissions(Set<String> permissions) {
-		this.permissions = permissions;
-	}
-
-	@JsonSerialize(include = Inclusion.NON_NULL)
-	public List<UUID> getRoles() {
-		return roles;
-	}
-
-	public void setRoles(List<UUID> roles) {
-		this.roles = roles;
-	}
 	
 	@JsonSerialize(include = Inclusion.NON_NULL)
 	public String getPath() {
@@ -111,11 +75,11 @@ public class File extends TypedEntity{
 	}
 
 	@JsonSerialize(include = Inclusion.NON_NULL)
-	public String getSize() {
+	public Long getSize() {
 		return size;
 	}
 
-	public void setSize(String size) {
+	public void setSize(Long size) {
 		this.size = size;
 	}
 }
